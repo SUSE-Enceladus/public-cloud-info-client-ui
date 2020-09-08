@@ -1,0 +1,431 @@
+<html>
+  <head>
+    <title>Public cloud INformation Tracker | SUSE</title>
+    <link rel="shortcut icon" href="assets/images/favicon.ico" />
+    <link rel="icon" type="image/png" href="assets/images/favicon.ico">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta http-equiv="Content-Language" content="en,us" />
+    <meta http-equiv="Content-Type" content="text/html;charset=UTF-8" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <meta http-equiv="Content-Script-Type" content="text/javascript" />
+    <meta name="author" content="SUSE Public Cloud" />
+    <meta name="Create-Date" content="30 Sep 2020" />
+    <meta name="Content-Date" content="30 Jan 2020" />
+    <meta name="Last-Modified" content="30 Jan 2020" />
+    <meta charset="utf-8"/>
+    <script src="assets/js/jquery.min.js"></script>
+    <script src="assets/js/jsviews.min.js"></script>
+    <script src="assets/js/jsrender.min.js"></script>
+    <script src="assets/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-cookie@rc/dist/js.cookie.min.js"></script>
+    <link rel="stylesheet" href="assets/css/jquery.dataTables.min.css"/>
+    
+    <script src="assets/js/pluralize.js"></script>
+
+    <!-- note that in development mode, loading main.css this way causes font loading errors in the console
+         that should not happen in production as pint.suse.com should be able to load fonts from www.suse.com
+         without CORS issues. The fonts are bundled in regardless, and its only the console errors that are a
+         concern. The workaround is to load main.css locally at the cost of potentially missing updates. -->
+    <link rel="stylesheet" href="https://www.suse.com/min/?b=assets/css&f=bootstrap.css,main.css,iefix.css">
+
+    <link rel="stylesheet" href="assets/css/eos-imports.css"/>
+    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/eos-icons/dist/css/eos-icons.css' />
+    <link rel="stylesheet" href="assets/css/pintui.css"/>
+
+  </head>
+  <body class="t-work">
+    <header class="nocontent t-work">
+      <div id="utilitynav">
+        <div class="container-fluid">
+          <a href="https://www.suse.com/">
+            <img class="logo" src="assets/images/suse-white-logo-green.svg" />
+          </a>
+        </div>
+      </div>
+        
+    </header>    
+      <main role="main" class="container">
+        <row>
+        <div id="" class="">
+          <br>
+          <h1>PINT - The Public Cloud INformation Tracker</h1>
+          <p>This service provides data about the images SUSE publishes in supported
+            public cloud frameworks.</p>
+        </div>
+        </row>
+        <row id="error_row" class="hidden">
+          <div class="alert alert-section alert-danger">
+            <i class="eos-icons eos-18 alert-icon">error</i>
+            <div class="alert-body">
+              <div class="alert-title">Connection Failure</div>
+              Failed to load data. Please reload the page to try again.
+            </div>
+          </div>
+        </row>
+        <row id="page_load_mask" class="">
+	        <div id="loadingMask">
+            <img id="pageLoadingIndicator" class="centered" 
+              src="assets/images/loading.svg" alt="Loading..."/>
+          </div>
+        </row>
+        <row id="csp_content" class="hidden">
+	        <select id="csp" class="cloudProvider custom-select"></select>
+	        <div id="result"></div>
+        </row>
+      </main>
+      <!-- start footer content -->
+      <footer class="t-work">
+        <div class="container-fluid ">
+          <div class="row">
+            <div class="footer">
+              <div class="copy">
+                <span class="copy__rights">© <script type="text/javascript">var d = new Date(); document.write(d.getFullYear() + " ");</script> SUSE, All Rights Reserved</span>
+                <a href="https://www.suse.com/company/policies/privacy/">Privacy and Cookie Policy</a>
+              </div>
+              <div class="clear"></div>
+            </div>
+          </div>
+        </div>
+      </footer>
+
+
+    <script id="theTmpl" type="text/x-jsrender">
+    <select id="state" class="custom-select">
+    <option value="" default>All states</option>
+    {{for states sort=true}}
+    <option value="{{:}}">{{:}}</option>
+    {{/for}}
+  </select>
+
+  {{if regions.length > 0}} <!-- some CSP may have not regions -->
+    <select id= "region" class="custom-select">
+      <option value="" default>All {{:regionName}}</option>
+    {{for regions sort=true}}
+      <option value="{{:}}">{{:}}</option>
+    {{/for}}
+    </select>
+  {{/if}}
+  
+  <div id="indicatorContainer">
+    <img id="tableLoadingIndicator" class="centered" 
+        src="assets/images/loading.svg" alt="Loading..."/>
+  </div>
+
+  <table id="coolTable" class="display">
+    <thead>
+    {{for attributes}}
+      <th>{{:}}</th>
+    {{/for}}
+    </thead>
+	  <tbody>
+	  {{for images ~attributes=attributes}}
+	  <tr class="odd">
+	  {{for ~attributes ~imgData=#data}}
+          <td>{{:~imgData[#data]}}</td>
+	  {{/for}}
+      </tr>
+	    {{/for}}
+    </tbody>
+  </table>
+  </script>
+
+  <script>
+  var serviceUrlBase = 'https://susepubliccloudinfo.suse.com/v1/';
+  var images = [];
+  var attributes = {};
+  var regions = {};
+  var region = '';
+  var states = {};
+  var current_csp = 'alibaba';//default provider loaded on page load
+  var cookie_label_csp = 'csp';
+  const cache_timeout = 86400000;//24 hours, reduce this to 1000 or less to test without cache
+  const cache_timeout_prefix = 'TIMESTAMP_';
+
+  var regionIdx = {};
+  var cspFiles= '';
+
+  jQuery.fn.dataTableExt.afnFiltering.push(
+    function( oSettings, aData, iDataIdx ) {
+      region = $('#region').val();
+      current_csp = $('#csp').val();
+
+      var result = true;
+
+      if (region) result = result && aData[regionIdx] == region;
+
+      return result;
+    }
+  );
+
+  /**
+  * capitalize the first letter of a string
+  * @param {string}
+  * @return {string}
+  */
+  function capitalize(str){
+    return (str === null || str.length === 0) ? str : str[0].toUpperCase() + str.slice(1);
+  }
+
+  // load user preferences, such as the most recent search selections
+  // from cookies
+  let user_csp = Cookies.get(cookie_label_csp);
+  if(user_csp !== undefined && user_csp !== ''){
+    current_csp = user_csp;
+  }
+
+  //load the public cloud providers list, this is done once during the initial load
+  //example url: https://susepubliccloudinfo.suse.com/v1/providers.json
+  fetch(serviceUrlBase + 'providers.json')
+    .then(response => response.json())
+    .then(function(data){
+      set_providers(data.providers);
+    })
+    .catch(function(error) {
+      dataLoadError(error, serviceUrlBase + 'providers.json');
+    });
+
+  //once the providers list is loaded, set the values into the html forms/options
+  function set_providers(cspsNames){
+    //remove the current options
+    $('#csp option').each(function() {
+      $(this).remove()
+    });
+
+    //for each csp, add it to the options list
+    $.each(cspsNames, function(index, provider) {
+      var attrs = {value: provider.name};
+      //if the provider matches the current selection, set that in the option element attributes
+      if(provider.name === current_csp){
+        attrs['selected'] = true;
+        //this will trigger a load of the images on the initial page load after the provider list is loaded
+        //based on the default provider
+        getImages();
+      }
+      let option = $('<option/>').attr(attrs).text(capitalize(provider.name));
+	    $('#csp').append(option);
+    });
+  }
+
+  //the states are common across csps, load them once at the beginning
+  fetch(serviceUrlBase + 'images/states.json')
+    .then(response => response.json())
+    .then(function(data){
+      let loadedStates = {};
+      $.each(data.states, function(index, state) {
+        loadedStates[state.name] = true;
+      });
+      states = loadedStates;
+    })
+    .catch(function(error) {
+      dataLoadError(error, serviceUrlBase + 'images/states.json');
+    })
+
+  /**
+  * load images from the public cloud service, leveraging the state (if any)
+  * and the currently selected csp
+  *
+  * example url: https://susepubliccloudinfo.suse.com/v1/oracle/images/active.json
+  */
+  function getImages(){
+    let state = $('#state').val();
+    let imagesUrl = serviceUrlBase + current_csp + '/images.xml';
+    //if "all states" is selected the value will be either undefined or ''
+    // only do a state filtered load if the state is filtered
+    if(state !== undefined && state !== ''){
+      imagesUrl = serviceUrlBase + current_csp + '/images/' + state + '.xml';
+    }
+
+    //trigger the load indicator
+    loadingStart();
+
+    //check to see if the url has been loaded recently and is in localStorage
+    let cachedValue = checkCacheForValue(imagesUrl);
+
+    //if there is a cached value, use that instead of loading new data
+    if(cachedValue === undefined || cachedValue === null || cachedValue === ''){
+      //get the images, parse the xml and update the table
+      fetch(imagesUrl)
+        .then(response => response.text())
+        .then(xmlString => parseXmlAndUpdateTable(xmlString, imagesUrl))
+        .catch(function(error) {
+          dataLoadError(error, imagesUrl);
+        });
+    } else {
+      //if the data is in the cache, use that
+      parseXmlAndUpdateTable(cachedValue);
+    }
+  }
+
+  /**
+   * parses the xml and updates the table
+   * separated out from the fetch loop to handle cached and non-cached case
+   * 
+   * @param {String} xml string of the data to load into the table
+   * @param {String} the imagesUrl that was loaded for caching purposes
+   */
+  function parseXmlAndUpdateTable(xmlString, imagesUrl){
+    let data = $.parseXML(xmlString);
+    updateTableValues(data);
+    loadingEnd();
+    if(imagesUrl !== undefined){
+      let localStorage = window.localStorage;
+      localStorage.setItem(imagesUrl , xmlString);
+      localStorage.setItem(cache_timeout_prefix + imagesUrl, (new Date()).getTime());
+    }
+  }
+
+  /**
+   * display the loading indicator and make the table opaque
+   */
+  function loadingStart(){
+    $('#tableLoadingIndicator').removeClass('hidden');
+    $('#coolTable_wrapper').addClass('hidden');
+    $('#coolTable').addClass('tableLoading');
+  }
+
+  /**
+   * hide the loading indicator and make the table clear
+   */
+  function loadingEnd(){
+    $('#tableLoadingIndicator').addClass('hidden');
+    $('#coolTable_wrapper').removeClass('hidden');
+    $('#coolTable').removeClass('tableLoading');
+    
+    //the initial load has these reversed, so once the data is loaded for
+    //the first time, swap them
+    //the reason these arent re-used is that on subsequent loads the filters
+    //should stay visible
+    $('#csp_content').removeClass('hidden');
+    $('#page_load_mask').addClass('hidden');
+  }
+
+  /**
+   * logs out to the console that an error occurred and displays a banner to the user
+   * recommending they reload the page
+   *
+   * @param {Error} the error caught in the exception
+   * @param {string} the url that was trying to load when the exception occurred
+   */
+  function dataLoadError(error, url) {
+    $('#error_row').removeClass('hidden');
+    console.log('Error loading data: \n:', error);
+    console.log('URL that failed to load:' + url);
+    $('#page_load_mask').addClass('hidden');
+    $('#tableLoadingIndicator').addClass('hidden');
+  }
+
+  /**
+   * checks if localstorage has a result for the specified URL query
+   * and if so, is the result recent enough to be considered value
+   * 
+   * @param {String} the url value to check for data in the cache
+   */
+  function checkCacheForValue(queryUrl) {
+    let cacheValue = undefined;
+    let localStorage = window.localStorage;
+    let storedAtTime = localStorage.getItem(cache_timeout_prefix + queryUrl);
+    let cacheCheckTime = (new Date()).getTime() - cache_timeout;
+    
+    //compare the time the data was stored to the current time minus the
+    //timeout window
+    if(storedAtTime !== null && storedAtTime !== undefined &&
+       (storedAtTime > cacheCheckTime)) {
+      //return the item from the cache since its new enough
+      cacheValue = localStorage.getItem(queryUrl);
+    } else if (storedAtTime !== null && storedAtTime !== undefined) {
+      //the query result is too old, remove it from the cache
+      localStorage.removeItem(cache_timeout_prefix + queryUrl);
+      localStorage.removeItem(queryUrl);
+    }
+    
+    return cacheValue;
+  }
+
+  //update the linkages between the template and the data
+  function updateTemplate(){
+    var template = $.templates("#theTmpl");
+    let props = {
+          'attributes': Object.keys(attributes),
+          'regions': Object.keys(regions),
+          'states': Object.keys(states),
+          'images': images
+    };
+
+    if(region !== undefined){
+      props.regionName = pluralize(region);
+    }
+
+    let selectedState = $('#state').val();
+	  template.link("#result", props);
+
+    //this should NOT be necessary, something in the template.link is
+    //changing the visibly selected option back to the default
+    //TODO - debug and fix
+    $('#state').val(selectedState);
+  }
+
+  function updateTableValues(xmlData){
+    images = [];
+    attributes = {};
+    regions = {};
+    regionIdx = {};
+
+    $(xmlData).find('image').each(function(idx, imgItem){
+	      var image = {};
+	      $(imgItem.attributes).each(function(idx, imgItem){
+          image[imgItem.name] = imgItem.value;
+          attributes[imgItem.name] = true;
+          if (imgItem.name == 'region' || imgItem.name == 'environment') {
+	          regions[imgItem.value] = true;
+	            region = imgItem.name;
+	        }
+	      });
+
+	      images.push(image);
+	    });
+
+	    var attrKeys = Object.keys(attributes);
+
+	    regionIdx = attrKeys.indexOf(region);
+
+      //update the data linkages with the new data
+      updateTemplate();
+
+      //whenever the state or region change, redraw the table
+      var dataTable = $('#coolTable').DataTable({
+        "initComplete": function(settings, json) {
+          customizeTableAppearance();
+        }
+      });
+	    $('#state, #region').change(function() {
+	      dataTable.draw();
+	    });
+
+      //when the state changes, load the images from the rest API
+      $('#state').change(function() {
+        getImages();
+      });
+  }
+
+  /**
+  * customize table appearance after a table load
+  */
+  function customizeTableAppearance(){
+    $('select[name="coolTable_length"]').addClass('custom-select');
+  }
+
+  //When the document loads, setup a listener for changes in the csp/provider
+  // whenever a new provider is loaded, get the regions and Images for that provider
+  $(document).ready(function() {
+    $('#csp').change(function() {
+      current_csp = $(this).val();
+      Cookies.set(cookie_label_csp, current_csp);
+      getImages();
+    });
+
+  });
+
+  </script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+/*
+* css file for the pint-web-ui
+*
+*/
+
+body.t-work {
+    font-family: 'work',Verdana,sans-serif;
+}
+
+.centered {
+    text-align: center;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.hidden {
+    display: none;
+}
+
+.tableLoading{
+    opacity: 0.15;
+}
+
+#tableLoadingIndicator{
+    margin-top: 50px;
+}
+
+#pageLoadingIndicator, #tableLoadingIndicator{
+    height: 96px;
+    width: 96px;
+}
+
+#indicatorContainer {
+    position: absolute;
+    display: contents;
+}
+
+#loadingMask, #page_load_mask {
+    height: calc(100vh - 310px);/** height of the page minus header and footer **/
+}
+
+#loadingMask {
+    padding-top: 100px;
+}
+
+#csp {
+    margin: 0px 5px;
+}
+
+#result {
+    min-height: 200px;
+}
+
+#coolTable_filter{
+    margin-right: 5px;
+}
+
+#coolTable_length{
+    margin: 5px 0px 0px 5px;
+}
+
+.cloudProvider {
+	float: left;
+	margin-right: .5%;
+}
+
+header.t-work {
+    min-height: 110px;
+    background-color: #0C322C;
+}
+
+@media (min-width: 1600px){
+    .container {
+        width: 1550px;
+    }
+}
+
+select {
+    appearance: none; /** hides the default arrow **/
+    -moz-appearance: none; /** hides the default arrow in firefox**/
+    line-height: initial;
+    width: 220px;
+}
+
+input[type=search] {
+    border-radius: 0px;
+    border-width: 0px 0px 1px 0px;
+    box-shadow: none;
+    border-color: black;
+    padding-left: 4px;
+}
+
+input[type=search]:focus {
+    box-shadow: 0px 1px 0px #00b2e2;
+    border-color: transparent;
+    outline: none;
+}
+
+main {
+    min-height: calc(100vh - 205px);
+}
+
+footer {
+    margin-top: 10px;
+}
+
+table.dataTable thead .sorting_desc,
+table.dataTable thead .sorting_asc{
+    background-size: contain;
+}
