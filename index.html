@@ -1,8 +1,8 @@
 <html>
   <head>
     <title>Public cloud INformation Tracker | SUSE</title>
-    <link rel="shortcut icon" href="assets/images/favicon.ico" />
-    <link rel="icon" type="image/png" href="assets/images/favicon.ico">
+    <link id="shortcut_favicon" rel="shortcut icon" href="" />
+    <link id="favicon" rel="icon" type="image/png" href="">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="x-ua-compatible" content="ie=edge">
     <meta http-equiv="Content-Language" content="en,us" />
@@ -38,8 +38,8 @@
     <header class="nocontent t-work">
       <div id="utilitynav">
         <div class="container-fluid">
-          <a href="https://www.suse.com/">
-            <img class="logo" src="assets/images/suse-white-logo-green.svg" />
+          <a id="headerurl" href="">
+            <img id="headerlogo" class="logo" src="" />
           </a>
         </div>
       </div>
@@ -418,6 +418,13 @@
   //When the document loads, setup a listener for changes in the csp/provider
   // whenever a new provider is loaded, get the regions and Images for that provider
   $(document).ready(function() {
+    $.getJSON("assets/theme.json", function(json){
+      $('#headerlogo').attr("src", json.logo_url);
+      $('#headerurl').attr("href", json.logo_link_url);
+      $('#shortcut_favicon').attr("href", json.favicon_url);
+      $('#favicon').attr("href", json.favicon_url);
+    });
+
     $('#csp').change(function() {
       current_csp = $(this).val();
       Cookies.set(cookie_label_csp, current_csp);
